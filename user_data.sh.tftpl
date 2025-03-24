@@ -1,0 +1,104 @@
+#!/bin/bash
+set -e
+
+### COMMON CONFIGURATION
+
+# Install common packages
+apt update
+apt install -y apt-transport-https ca-certificates curl gpg awscli
+
+# Install Kubernetes packages
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /usr/share/keyrings/kubernetes-archive-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /" | tee /etc/apt/sources.list.d/kubernetes.list
+apt update
+if [ -n "${containerd_version}" ]; then apt install -y containerd="${containerd_version}"; else apt install -y containerd; fi
+if [ -n "${kubernetes_version}" ]; then apt install -y kubelet="${kubernetes_version}" kubeadm="${kubernetes_version}"; else apt install -y kubelet kubeadm; fi
+apt-mark hold kubelet kubeadm
+
+# Configure containerd with systemd as the cgroup driver
+mkdir -p /etc/containerd
+containerd config default > /etc/containerd/config.toml
+sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml 
+systemctl restart containerd
+systemctl enable containerd
+
+# Configure kernel settings for Kubernetes networking
+echo -e "overlay\nbr_netfilter" > /etc/modules-load.d/k8s.conf
+modprobe -a overlay br_netfilter
+cat >/etc/sysctl.d/99-kubernetes-cri.conf <<EOF
+net.bridge.bridge-nf-call-iptables = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+net.ipv4.ip_forward = 1
+EOF
+sysctl --system
+
+# Disable swap
+swapoff -a
+sed -i '/swap/d' /etc/fstab
+
+# Set AWS region and local IP
+REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
+aws configure set region $REGION
+LOCAL_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
+
+# Add local IP to /etc/hosts
+echo "$LOCAL_IP $(hostname)" >>/etc/hosts
+
+%{ if node_role == "control-plane" ~}
+### CONTROL-PLANE CONFIGURATION
+
+%{ if first_controlplane_node != "" ~}
+# Install Kubernetes controlplane packages
+if [ "${kubernetes_version}" -n ]; then apt install -y kubectl="${kubernetes_version} jq"; else apt install -y kubectl jq; fi
+apt-mark hold kubectl
+
+kubeadm init \
+  --kubernetes-version "${kubernetes_version}" \
+  --control-plane-endpoint="$LOCAL_IP" \
+  --apiserver-advertise-address="$LOCAL_IP" \
+  --apiserver-cert-extra-sans "$LOCAL_IP" \
+  --upload-certs \
+  --token-ttl=0 2>&1 \
+  > /root/kubeadm_init_output.txt
+
+# Extract and upload node join commands
+grep -A 4 "join any number of the control-plane" /root/kubeadm_init_output.txt | tail -n 3 > /root/controlplane_join.sh
+grep -A 3 "join any number of worker" /root/kubeadm_init_output.txt | tail -n 2 > /root/worker_join.sh
+aws s3 cp /root/controlplane_join.sh "s3://${s3_bucket_name}/controlplane_join.sh"
+aws s3 cp /root/worker_join.sh "s3://${s3_bucket_name}/worker_join.sh"
+
+# Configure kubectl for root and admin users
+mkdir -p /root/.kube /home/admin/.kube
+cp -i /etc/kubernetes/admin.conf /root/.kube/config 
+cp -i /etc/kubernetes/admin.conf /home/admin/.kube/config
+chown $(id root -u):$(id root -g) /root/.kube/config
+chown $(id admin -u):$(id admin -g) /home/admin/.kube/config
+
+%{ else ~}
+# Wait until the control-plane node provides the join script in S3
+while ! aws s3 ls "s3://${s3_bucket_name}/controlplane_join.sh" 2>/dev/null; do
+  echo "Waiting for cluster initialization to complete..."
+  sleep 10
+done
+
+# Download and execute the join script
+aws s3 cp "s3://${s3_bucket_name}/controlplane_join.sh" /root/controlplane_join.sh
+chmod +x /root/controlplane_join.sh
+bash /root/controlplane_join.sh
+%{~ endif ~}
+%{~ endif ~}
+
+%{~ if node_role == "worker" ~}
+### WORKER CONFIGURATION
+
+# Wait until the first control-plane node provides the join script in S3
+while ! aws s3 ls "s3://${s3_bucket_name}/worker_join.sh" 2>/devnull; do
+  echo "Waiting for cluster initialization to complete..."
+  sleep 10
+done
+
+# Download and execute the join script
+aws s3 cp "s3://${s3_bucket_name}/worker_join.sh" /root/worker_join.sh
+chmod +x /root/worker_join.sh
+bash /root/worker_join.sh
+%{~ endif ~}
