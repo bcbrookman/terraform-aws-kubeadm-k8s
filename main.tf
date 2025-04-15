@@ -4,7 +4,7 @@ module "controlplane-nodes" {
 
   ami                  = var.controlplane_node_ami_id == null ? data.aws_ami.debian12.id : var.controlplane_node_ami_id
   count                = var.controlplane_node_count
-  iam_instance_profile = aws_iam_instance_profile.node_profile.name
+  iam_instance_profile = aws_iam_instance_profile.node_instance_profile.name
   instance_type        = var.controlplane_node_instance_type
   key_name             = var.ssh_key_name
   name                 = format("%s%02s", "${var.cluster_name}-cp", count.index + 1)
@@ -26,7 +26,7 @@ module "worker-nodes" {
 
   ami                  = var.worker_node_ami_id == null ? data.aws_ami.debian12.id : var.worker_node_ami_id
   count                = var.worker_node_count
-  iam_instance_profile = aws_iam_instance_profile.node_profile.name
+  iam_instance_profile = aws_iam_instance_profile.node_instance_profile.name
   instance_type        = var.worker_node_instance_type
   key_name             = var.ssh_key_name
   name                 = format("%s%02s", "${var.cluster_name}-wk", count.index + 1)
