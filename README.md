@@ -1,6 +1,6 @@
-#  AWS kubeadm-k8s Terraform module
+#  AWS Kubeadm-K8s Terraform module
 
-This module provisions [Kubernetes](https://kubernetes.io) clusters on [AWS EC2](https://) instances using [Kubeadm]() with a [stacked etcd topology](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/ha-topology/#stacked-etcd-topology).
+This module provisions [Kubernetes](https://kubernetes.io) clusters on [AWS EC2](https://aws.amazon.com/ec2/) instances using [Kubeadm](https://kubernetes.io/docs/reference/setup-tools/kubeadm/) with a [stacked etcd topology](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/ha-topology/#stacked-etcd-topology).
 
 ## How it works
 
@@ -45,6 +45,6 @@ resource "aws_route53_record" "mycluster" {
   name    = "mycluster.mydomain.example"
   type    = "CNAME"
   ttl     = 300
-  records = [module.mycluster.apiserver_lb_dns]
+  records = [module.mycluster.apiserver_lb_dns_name]
 }
 ```
