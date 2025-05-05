@@ -1,4 +1,4 @@
-# Terraform AWS Kubeadm K8s
+#  AWS kubeadm-k8s Terraform module
 
 This module provisions [Kubernetes](https://kubernetes.io) clusters on [AWS EC2](https://) instances using [Kubeadm]() with a [stacked etcd topology](https://kubernetes.io/docs/setup/production-environment/tools/kubeadm/ha-topology/#stacked-etcd-topology).
 
@@ -13,9 +13,6 @@ This module provisions [Kubernetes](https://kubernetes.io) clusters on [AWS EC2]
 
 > [!IMPORTANT]  
 > No [CNI plugin](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/) is installed by this module. You will need to install one yourself before running workloads.
- 
-> [!WARNING]  
-> For now, the API server endpoint is configured with the IP address of the first control-plane node. While suitable for testing, it does not provide high-availability.
 
 ## Example Usage
 
@@ -27,5 +24,27 @@ module "mycluster" {
   worker_node_count       = 3
   subnet_id               = aws_subnet.mysubnet.id
   ssh_key_name            = aws_key_pair.mykeypair.key_name
+}
+```
+
+## Customizing the API server DNS name
+
+The DNS name of the API server load balancer is available as a module output so it can be used in a CNAME record to customize the API server's DNS name.
+
+For example:
+
+```terraform
+module "mycluster" {
+  source        = "bcbrookman/kubeadm-k8s/aws"
+  ...
+  apiserver_dns = "mycluster.mydomain.example"
+}
+
+resource "aws_route53_record" "mycluster" {
+  zone_id = aws_route53_zone.example.zone_id
+  name    = "mycluster.mydomain.example"
+  type    = "CNAME"
+  ttl     = 300
+  records = [module.mycluster.apiserver_lb_dns]
 }
 ```

@@ -1,3 +1,7 @@
+locals {
+  apiserver_dns = var.apiserver_dns == "CLUSTERNAME-RANDOM.elb.REGION.amazonaws.com" ? null : var.apiserver_dns
+}
+
 module "controlplane-nodes" {
   source  = "terraform-aws-modules/ec2-instance/aws"
   version = "5.7.1"
@@ -11,6 +15,8 @@ module "controlplane-nodes" {
   subnet_id            = var.subnet_id
 
   user_data_base64 = base64encode(templatefile("${path.module}/user_data.sh.tftpl", {
+    apiserver_dns           = coalesce(local.apiserver_dns, aws_lb.apiserver.dns_name)
+    apiserver_port          = var.apiserver_port
     containerd_version      = var.containerd_version
     first_controlplane_node = count.index == 0 ? "true" : ""
     kubernetes_version      = var.kubernetes_version
@@ -18,6 +24,10 @@ module "controlplane-nodes" {
     node_role               = "control-plane"
     s3_bucket_name          = aws_s3_bucket.kubeadm_cmds.id
   }))
+
+  depends_on = [
+    aws_lb.apiserver
+  ]
 }
 
 module "worker-nodes" {
@@ -33,6 +43,8 @@ module "worker-nodes" {
   subnet_id            = var.subnet_id
 
   user_data_base64 = base64encode(templatefile("${path.module}/user_data.sh.tftpl", {
+    apiserver_dns           = coalesce(local.apiserver_dns, aws_lb.apiserver.dns_name)
+    apiserver_port          = var.apiserver_port
     containerd_version      = var.containerd_version
     first_controlplane_node = ""
     kubernetes_version      = var.kubernetes_version

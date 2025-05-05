@@ -48,9 +48,10 @@ aws configure set region $AWS_REGION
 # INITIALIZE KUBERNETES
 kubeadm init \
   --kubernetes-version="${kubernetes_version}" \
-  --control-plane-endpoint="$LOCAL_IP" \
   --apiserver-advertise-address="$LOCAL_IP" \
-  --apiserver-cert-extra-sans="$LOCAL_IP" \
+  --apiserver-bind-port="${apiserver_port}" \
+  --apiserver-cert-extra-sans="${apiserver_dns}" \
+  --control-plane-endpoint="${apiserver_dns}" \
   --upload-certs \
   --token-ttl=0 2>&1 \
   > /root/kubeadm_init_output.txt
