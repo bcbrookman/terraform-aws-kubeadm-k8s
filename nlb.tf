@@ -3,9 +3,10 @@ data "aws_subnet" "selected" {
 }
 
 resource "aws_lb" "apiserver" {
-  name               = var.cluster_name
-  load_balancer_type = "network"
-  internal           = true
+  name                             = var.cluster_name
+  load_balancer_type               = "network"
+  internal                         = true
+  enable_cross_zone_load_balancing = var.apiserver_crosszone_lb_enabled
 
   subnet_mapping {
     subnet_id = var.subnet_id
