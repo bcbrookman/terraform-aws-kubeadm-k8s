@@ -1,4 +1,4 @@
-resource "aws_iam_role" "node_iam_role" {
+resource "aws_iam_role" "node" {
   name = "${var.cluster_name}-node-iam-role"
   assume_role_policy = jsonencode({
     Version = "2012-10-17"
@@ -14,14 +14,14 @@ resource "aws_iam_role" "node_iam_role" {
   })
 }
 
-resource "aws_iam_instance_profile" "node_instance_profile" {
+resource "aws_iam_instance_profile" "node" {
   name = "${var.cluster_name}-node-instance-profile"
-  role = aws_iam_role.node_iam_role.name
+  role = aws_iam_role.node.name
 }
 
-resource "aws_iam_role_policy" "node_iam_role_policy" {
+resource "aws_iam_role_policy" "node" {
   name = "${var.cluster_name}-node-iam-role-policy"
-  role = aws_iam_role.node_iam_role.id
+  role = aws_iam_role.node.id
   policy = jsonencode({
     Version = "2012-10-17"
     Statement = [

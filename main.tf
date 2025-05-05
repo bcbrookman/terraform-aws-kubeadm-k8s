@@ -8,13 +8,13 @@ locals {
   ssh_key_name             = var.ssh_key_name == "none" ? "" : var.ssh_key_name
 }
 
-module "controlplane-nodes" {
+module "controlplane_nodes" {
   source  = "terraform-aws-modules/ec2-instance/aws"
   version = "5.7.1"
 
   ami                  = local.controlplane_node_ami_id
   count                = var.controlplane_node_count
-  iam_instance_profile = aws_iam_instance_profile.node_instance_profile.name
+  iam_instance_profile = aws_iam_instance_profile.node.name
   instance_type        = var.controlplane_node_instance_type
   key_name             = local.ssh_key_name
   name                 = format("%s%02s", "${var.cluster_name}-cp", count.index + 1)
@@ -35,13 +35,13 @@ module "controlplane-nodes" {
   ]
 }
 
-module "worker-nodes" {
+module "worker_nodes" {
   source  = "terraform-aws-modules/ec2-instance/aws"
   version = "5.7.1"
 
   ami                  = local.worker_node_ami_id
   count                = var.worker_node_count
-  iam_instance_profile = aws_iam_instance_profile.node_instance_profile.name
+  iam_instance_profile = aws_iam_instance_profile.node.name
   instance_type        = var.worker_node_instance_type
   key_name             = local.ssh_key_name
   name                 = format("%s%02s", "${var.cluster_name}-wk", count.index + 1)
