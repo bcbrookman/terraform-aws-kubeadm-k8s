@@ -12,7 +12,7 @@ variable "apiserver_dns" {
   nullable    = false
 
   validation {
-    condition = can(regex("^[A-Za-z0-9]([A-Za-z0-9](-[A-Za-z0-9]){0,61})*(\\.[A-Za-z0-9]([A-Za-z0-9](-[A-Za-z0-9]){0,61})*.)*\\.*$", var.apiserver_dns))
+    condition     = can(regex("^[A-Za-z0-9]([A-Za-z0-9](-[A-Za-z0-9]){0,61})*(\\.[A-Za-z0-9]([A-Za-z0-9](-[A-Za-z0-9]){0,61})*.)*\\.*$", var.apiserver_dns))
     error_message = "The DNS name must be a valid DNS name like 'example.com' or 'sub.example.org'."
   }
 }
@@ -79,6 +79,11 @@ variable "controlplane_node_instance_type" {
   type        = string
   default     = "t3.small"
   nullable    = false
+
+  validation {
+    condition     = can(regex("^[a-z0-9]+\\.[a-z0-9]+$", var.controlplane_node_instance_type))
+    error_message = "Must be an instance type in the format t2.micro, m5.large, etc."
+  }
 }
 
 variable "kubernetes_version" {
