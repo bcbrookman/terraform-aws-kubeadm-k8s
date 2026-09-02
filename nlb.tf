@@ -30,7 +30,7 @@ resource "aws_lb_target_group" "apiserver" {
 
 resource "aws_lb_target_group_attachment" "apiserver" {
   for_each = {
-    for k, v in module.controlplane_nodes :
+    for k, v in aws_instance.controlplane_nodes :
     k => v
   }
 

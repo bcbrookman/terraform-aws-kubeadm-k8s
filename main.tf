@@ -8,52 +8,58 @@ locals {
   ssh_key_name             = var.ssh_key_name == "none" ? "" : var.ssh_key_name
 }
 
-module "controlplane_nodes" {
-  source  = "terraform-aws-modules/ec2-instance/aws"
-  version = "5.7.1"
-
-  ami                  = local.controlplane_node_ami_id
+resource "aws_instance" "controlplane_nodes" {
   count                = var.controlplane_node_count
-  iam_instance_profile = aws_iam_instance_profile.node.name
+  ami                  = local.controlplane_node_ami_id
   instance_type        = var.controlplane_node_instance_type
-  key_name             = local.ssh_key_name
-  name                 = format("%s%02s", "${var.cluster_name}-cp", count.index + 1)
   subnet_id            = var.subnet_id
+  key_name             = local.ssh_key_name
+  iam_instance_profile = aws_iam_instance_profile.node.name
 
-  user_data_base64 = base64encode(templatefile("${path.module}/user_data.sh.tftpl", {
-    apiserver_dns           = coalesce(local.apiserver_dns, aws_lb.apiserver.dns_name)
-    apiserver_port          = var.apiserver_port
-    containerd_version      = local.containerd_version
-    first_controlplane_node = count.index == 0 ? "true" : ""
-    kubernetes_version      = local.kubernetes_version
-    node_role               = "control-plane"
-    s3_bucket_name          = aws_s3_bucket.kubeadm_cmds.id
-  }))
+  user_data_base64 = base64encode(templatefile(
+    "${path.module}/user_data.sh.tftpl",
+    {
+      apiserver_dns           = coalesce(local.apiserver_dns, aws_lb.apiserver.dns_name)
+      apiserver_port          = var.apiserver_port
+      containerd_version      = local.containerd_version
+      first_controlplane_node = count.index == 0 ? "true" : ""
+      kubernetes_version      = local.kubernetes_version
+      node_role               = "control-plane"
+      s3_bucket_name          = aws_s3_bucket.kubeadm_cmds.id
+    }
+  ))
+
+  tags = {
+    Name = format("%s%02s", "${var.cluster_name}-cp", count.index + 1)
+  }
 
   depends_on = [
     aws_lb.apiserver
   ]
 }
 
-module "worker_nodes" {
-  source  = "terraform-aws-modules/ec2-instance/aws"
-  version = "5.7.1"
-
-  ami                  = local.worker_node_ami_id
+resource "aws_instance" "worker_nodes" {
   count                = var.worker_node_count
-  iam_instance_profile = aws_iam_instance_profile.node.name
+  ami                  = local.worker_node_ami_id
   instance_type        = var.worker_node_instance_type
-  key_name             = local.ssh_key_name
-  name                 = format("%s%02s", "${var.cluster_name}-wk", count.index + 1)
   subnet_id            = var.subnet_id
+  key_name             = local.ssh_key_name
+  iam_instance_profile = aws_iam_instance_profile.node.name
 
-  user_data_base64 = base64encode(templatefile("${path.module}/user_data.sh.tftpl", {
-    apiserver_dns           = coalesce(local.apiserver_dns, aws_lb.apiserver.dns_name)
-    apiserver_port          = var.apiserver_port
-    containerd_version      = local.containerd_version
-    first_controlplane_node = ""
-    kubernetes_version      = local.kubernetes_version
-    node_role               = "worker"
-    s3_bucket_name          = aws_s3_bucket.kubeadm_cmds.id
-  }))
+  user_data_base64 = base64encode(templatefile(
+    "${path.module}/user_data.sh.tftpl",
+    {
+      apiserver_dns           = coalesce(local.apiserver_dns, aws_lb.apiserver.dns_name)
+      apiserver_port          = var.apiserver_port
+      containerd_version      = local.containerd_version
+      first_controlplane_node = ""
+      kubernetes_version      = local.kubernetes_version
+      node_role               = "worker"
+      s3_bucket_name          = aws_s3_bucket.kubeadm_cmds.id
+    }
+  ))
+
+  tags = {
+    Name = format("%s%02s", "${var.cluster_name}-wk", count.index + 1)
+  }
 }
