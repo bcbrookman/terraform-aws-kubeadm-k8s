@@ -1,27 +1,28 @@
 #!/usr/bin/env bash
 set -e
 
-# INSTALL PACKAGES
+echo "INSTALLING REQUIRED PACKAGES..."
 apt update
 apt install -y apt-transport-https ca-certificates curl gpg awscli jq
-curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --dearmor -o /usr/share/keyrings/kubernetes-archive-keyring.gpg
+curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.31/deb/Release.key | gpg --yes --dearmor -o /usr/share/keyrings/kubernetes-archive-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/kubernetes-archive-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.31/deb/ /" > /etc/apt/sources.list.d/kubernetes.list
 apt update
 apt install -y \
- containerd%{ if containerd_version != "" }=${containerd_version}%{ endif } \
- kubelet%{ if kubernetes_version != "" }=${kubernetes_version}%{ endif } \
- kubeadm%{ if kubernetes_version != "" }=${kubernetes_version}%{ endif } \
- kubectl%{ if kubernetes_version != "" }=${kubernetes_version}%{ endif }
+  conntrack \
+  containerd%{ if containerd_version != "" }=${containerd_version}%{ endif } \
+  kubelet%{ if kubernetes_version != "" }=${kubernetes_version}%{ endif } \
+  kubeadm%{ if kubernetes_version != "" }=${kubernetes_version}%{ endif } \
+  kubectl%{ if kubernetes_version != "" }=${kubernetes_version}%{ endif }
 apt-mark hold kubelet kubeadm kubectl
 
-# CONFIGURE CONTAINERD WITH SYSTEMD CGROUP DRIVER
+echo "CONFIGURING CONTAINERD WITH SYSTEMD CGROUP DRIVER..."
 mkdir -p /etc/containerd
 containerd config default > /etc/containerd/config.toml
 sed -i 's/SystemdCgroup = false/SystemdCgroup = true/' /etc/containerd/config.toml
 systemctl restart containerd
 systemctl enable containerd
 
-# CONFIGURE KERNEL NETWORK SETTINGS
+echo "CONFIGURING KERNEL NETWORK SETTINGS..."
 cat >/etc/modules-load.d/k8s.conf <<EOF
 overlay
 br_netfilter
@@ -34,52 +35,56 @@ EOF
 modprobe -a overlay br_netfilter
 sysctl --system
 
-# DISABLE SWAP
+echo "DISABLING SWAP..."
 swapoff -a
 sed -i '/swap/d' /etc/fstab
 
-# SET AWS REGION AND LOCAL IP
+echo "SETTING AWS REGION AND LOCAL IP..."
 AWS_REGION=$(curl -s http://169.254.169.254/latest/meta-data/placement/region)
 LOCAL_IP=$(curl -s http://169.254.169.254/latest/meta-data/local-ipv4)
 aws configure set region $AWS_REGION
 
-%{ if node_role == "control-plane" ~}
-%{~ if first_controlplane_node != "" ~}
-# INITIALIZE KUBERNETES
-kubeadm init \
-  --kubernetes-version="${kubernetes_version}" \
-  --apiserver-advertise-address="$LOCAL_IP" \
-  --apiserver-bind-port="${apiserver_port}" \
-  --apiserver-cert-extra-sans="${apiserver_dns}" \
-  --control-plane-endpoint="${apiserver_dns}" \
-  --upload-certs \
-  --token-ttl=0 2>&1 \
-  > /root/kubeadm_init_output.txt
+join_cluster() {
+  echo "FETCHING CLUSTER JOIN COMMAND..."
+  until aws s3 ls "s3://${s3_bucket_name}/${node_role}_join.sh" 2>/dev/null; do
+    echo "RECHECKING IN 10 SECONDS..."; sleep 10
+  done
+  aws s3 cp "s3://${s3_bucket_name}/${node_role}_join.sh" /root/${node_role}_join.sh
+  echo "EXECUTING CLUSTER JOIN COMMAND..."
+  chmod +x /root/${node_role}_join.sh
+  bash /root/${node_role}_join.sh
+}
 
-# EXTRACT AND UPLOAD NODE JOIN COMMANDS
-grep -A 4 "join any number of the control-plane" /root/kubeadm_init_output.txt | tail -n 3 > /root/controlplane_join.sh
-grep -A 3 "join any number of worker" /root/kubeadm_init_output.txt | tail -n 2 > /root/worker_join.sh
-aws s3 cp /root/controlplane_join.sh "s3://${s3_bucket_name}/controlplane_join.sh"
-aws s3 cp /root/worker_join.sh "s3://${s3_bucket_name}/worker_join.sh"
+%{ if first_controlplane_node != "" ~}
+if aws s3 ls "s3://${s3_bucket_name}/control-plane_join.sh" 2>/dev/null; then
+  join_cluster
+else
+  echo "INITIALIZING NEW KUBERNETES CLUSTER..."
+  kubeadm init \
+    --kubernetes-version="${kubernetes_version}" \
+    --apiserver-advertise-address="$LOCAL_IP" \
+    --apiserver-bind-port="${apiserver_port}" \
+    --apiserver-cert-extra-sans="${apiserver_dns}" \
+    --control-plane-endpoint="${apiserver_dns}" \
+    --upload-certs \
+    --token-ttl=0 2>&1 \
+    > /root/kubeadm_init_output.txt
 
+  echo "EXPORTING NODE JOIN COMMANDS..."
+  grep -A 4 "join any number of the control-plane" /root/kubeadm_init_output.txt \
+    | tail -n 3 > /root/control-plane_join.sh
+  grep -A 3 "join any number of worker" /root/kubeadm_init_output.txt \
+    | tail -n 2 > /root/worker_join.sh
+  aws s3 cp /root/control-plane_join.sh "s3://${s3_bucket_name}/control-plane_join.sh"
+  aws s3 cp /root/worker_join.sh "s3://${s3_bucket_name}/worker_join.sh"
+fi
 %{~ else ~}
-# FETCH AND EXECUTE CONTROL-PLANE JOIN COMMAND
-while ! aws s3 ls "s3://${s3_bucket_name}/controlplane_join.sh" 2>/dev/null; do sleep 10; done
-aws s3 cp "s3://${s3_bucket_name}/controlplane_join.sh" /root/controlplane_join.sh
-chmod +x /root/controlplane_join.sh
-bash /root/controlplane_join.sh
+join_cluster
 %{~ endif ~}
 
-# CONFIGURE KUBECTL FOR ADMIN
+%{ if node_role == "control-plane" }
+echo "CONFIGURING KUBECTL FOR ADMIN USER..."
 mkdir -p /home/admin/.kube
 cp -i /etc/kubernetes/admin.conf /home/admin/.kube/config
 chown $(id admin -u):$(id admin -g) /home/admin/.kube/config
-%{~ endif ~}
-
-%{~ if node_role == "worker" ~}
-# FETCH AND EXECUTE WORKER JOIN COMMAND
-while ! aws s3 ls "s3://${s3_bucket_name}/worker_join.sh" 2>/devnull; do sleep 10; done
-aws s3 cp "s3://${s3_bucket_name}/worker_join.sh" /root/worker_join.sh
-chmod +x /root/worker_join.sh
-bash /root/worker_join.sh
-%{~ endif ~}
+%{~ endif }
