@@ -22,10 +22,10 @@ resource "aws_instance" "controlplane_nodes" {
       apiserver_dns           = coalesce(local.apiserver_dns, aws_lb.apiserver.dns_name)
       apiserver_port          = var.apiserver_port
       containerd_version      = local.containerd_version
+      cluster_name            = var.cluster_name
       first_controlplane_node = count.index == 0 ? "true" : ""
       kubernetes_version      = local.kubernetes_version
-      node_role               = "control-plane"
-      s3_bucket_name          = aws_s3_bucket.kubeadm_cmds.id
+      node_role               = "controlplane"
     }
   ))
 
@@ -52,10 +52,10 @@ resource "aws_instance" "worker_nodes" {
       apiserver_dns           = coalesce(local.apiserver_dns, aws_lb.apiserver.dns_name)
       apiserver_port          = var.apiserver_port
       containerd_version      = local.containerd_version
+      cluster_name            = var.cluster_name
       first_controlplane_node = ""
       kubernetes_version      = local.kubernetes_version
       node_role               = "worker"
-      s3_bucket_name          = aws_s3_bucket.kubeadm_cmds.id
     }
   ))
 

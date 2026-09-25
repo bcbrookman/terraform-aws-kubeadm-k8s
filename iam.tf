@@ -28,13 +28,12 @@ resource "aws_iam_role_policy" "node" {
       {
         Effect = "Allow"
         Action = [
-          "s3:PutObject",
-          "s3:ListBucket",
-          "s3:GetObject"
+          "ssm:GetParameter",
+          "ssm:PutParameter",
         ]
         Resource = [
-          aws_s3_bucket.kubeadm_cmds.arn,
-          "${aws_s3_bucket.kubeadm_cmds.arn}/*"
+          aws_ssm_parameter.controlplane_join_command.arn,
+          aws_ssm_parameter.worker_join_command.arn
         ]
       },
     ]

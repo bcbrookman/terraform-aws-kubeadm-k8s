@@ -7,9 +7,9 @@ This module provisions [Kubernetes](https://kubernetes.io) clusters on [AWS EC2]
 1. Each node is created with a [user-data script](https://cloudinit.readthedocs.io/en/latest/explanation/format.html#id2) that runs at first boot.
 2. The script prepares each node with prerequisite configurations and packages.
 3. `kubeadm init` is run on the first control-plane node to initialize the Kubernetes cluster.
-4. The resulting `kubeadm join` commands are copied to an S3 bucket.
-5. All other nodes download the `kubeadm join` command from the S3 bucket and join the cluster.
-6. The cluster admin can then manage the cluster using `kubectl`, etc. via the first control-plane node.
+4. The resulting `kubeadm join` commands are copied to an SSM parameter.
+5. All other nodes fetch the `kubeadm join` command from the SSM parameter and join the cluster.
+6. The cluster admin can then manage the cluster using `kubectl`, etc. via a control-plane node.
 
 > [!IMPORTANT]  
 > No [CNI plugin](https://kubernetes.io/docs/concepts/extend-kubernetes/compute-storage-net/network-plugins/) is installed by this module. You will need to install one yourself before running workloads.
